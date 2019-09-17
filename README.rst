@@ -24,13 +24,17 @@ The data analysis sandbox for JPX
 
 
 * Free software: MIT license
-* Documentation: https://jpxlab.readthedocs.io.
+* [TODO] Documentation: https://jpxlab.readthedocs.io.
 
 
 Features
 --------
 
-* TODO
+* Historical data conversion
+ * Download FLEX_Historical archive and parse and convert to HDF5 file.
+ * [TODO] Combine with volume adjustment information 
+* [TODO] Load them into the marketstore
+* [TODO] Example notebook to analyze the data
 
 Usage
 --------
