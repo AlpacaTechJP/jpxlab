@@ -32,6 +32,24 @@ Features
 
 * TODO
 
+Usage
+--------
+
+```
+$ python cli.py --help
+Usage: cli.py [OPTIONS]
+
+  Console script for jpxlab.
+
+Options:
+  -h, --host TEXT     host name of the sftp server
+  -p, --port INTEGER  port number of the sftp server
+  -u, --user TEXT     user id to login to the sftp server
+  -s, --src TEXT      source path
+  -o, --out-dir TEXT  output directory
+  --help              Show this message and exit.
+```
+
 Credits
 -------
 
