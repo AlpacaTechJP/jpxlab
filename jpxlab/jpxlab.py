@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from zipfile import ZipFile, BadZipFile
+import gzip
 import os
 import paramiko
 import struct
@@ -61,7 +62,8 @@ def _load_chunk(z):
         exchange,
         session,
         category,
-        security
+        security,
+        chunk_size
     )
 
 
@@ -134,16 +136,14 @@ def _dump_to_h5(z, store):
     out_volume_idx = dict()
     out_volume = dict()
 
-    while not z._eof:
+    while True:
 
-        try:
-            chunk = _load_chunk(z)
-            if chunk is None:
-                continue
-        except BadZipFile:
-            break
+        # TODO: need to implement EOF checking
+        chunk = _load_chunk(z)
+        if chunk is None:
+            continue
 
-        payload, exchange, session, category, security = chunk
+        payload, exchange, session, category, security, chunk_size = chunk
         key = (exchange, security)
 
         for typ, row in _parse_chunk(payload):
@@ -176,22 +176,44 @@ def _dump_to_h5(z, store):
 
 
 def _get_out_filename(src, out_dir):
-    return os.path.join(
-        out_dir,
-        os.path.basename(src).replace(".zip", ".h5"),
-    )
+    if src.endswith(".zip"):
+        return os.path.join(
+            out_dir,
+            os.path.basename(src).replace(".zip", ".h5"),
+        )
+    elif src.endswith(".gz"):
+        return os.path.join(
+            out_dir,
+            os.path.basename(src).replace(".gz", ".h5"),
+        )
+    else:
+        return os.path.join(
+            out_dir,
+            os.path.basename(src),
+        ) + ".h5"
 
 
 def fetch_and_convert(sftp, src, out_dir):
 
-    assert src.endswith(".zip")
-
     # Open the SFTP ZIP File
     with sftp.open(src, "r") as f:
-        zip_file = ZipFile(f)
-        # Open the first compressed file
-        # (Only expecting one file inside the ZIP)
-        with zip_file.open(zip_file.namelist()[0]) as z:
+
+        if src.endswith(".zip"):
+            zip_file = ZipFile(f, allowZip64=True)
+            # Open the first compressed file
+            # (Only expecting one file inside the ZIP)
+            with zip_file.open(zip_file.namelist()[0]) as z:
+                out_filename = _get_out_filename(src, out_dir)
+                with tables.open_file(out_filename, mode='w') as store:
+                    _dump_to_h5(z, store)
+        elif src.endswith(".gz"):
+            # Open the first compressed file
+            # (Only expecting one file inside the ZIP)
+            with gzip.open(f) as z:
+                out_filename = _get_out_filename(src, out_dir)
+                with tables.open_file(out_filename, mode='w') as store:
+                    _dump_to_h5(z, store)
+        else:
             out_filename = _get_out_filename(src, out_dir)
             with tables.open_file(out_filename, mode='w') as store:
-                _dump_to_h5(z, store)
+                _dump_to_h5(f, store)
