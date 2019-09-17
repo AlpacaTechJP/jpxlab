@@ -10,3 +10,6 @@ twine==1.12.1
 
 pytest==3.8.2
 pytest-runner==4.2
+
+paramiko
+tables
