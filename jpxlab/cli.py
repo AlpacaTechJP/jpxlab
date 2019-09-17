@@ -1,16 +1,36 @@
 # -*- coding: utf-8 -*-
 
 """Console script for jpxlab."""
-import sys
 import click
+import jpxlab
+import os
+import sys
 
 
 @click.command()
-def main(args=None):
+@click.option(
+    '-h', '--host', default="ftp.tmi.tse.or.jp",
+    help='host name of the sftp server')
+@click.option(
+    '-p', '--port', default=21, type=int,
+    help='port number of the sftp server')
+@click.option(
+    '-u', '--user',
+    help='user id to login to the sftp server')
+@click.option('-s', '--src', help='source path')
+@click.option('-o', '--out-dir', default="./", help='output directory')
+def main(host, port, user, src, out_dir):
     """Console script for jpxlab."""
-    click.echo("Replace this message by putting your code into "
-               "jpxlab.cli.main")
-    click.echo("See click documentation at http://click.pocoo.org/")
+
+    password = os.environ.get("JPXLAB_SFTP_PASS", None)
+    if password is None:
+        password = click.prompt(
+            'Please enter a password for the sftp server', type=str)
+
+    sftp = jpxlab.get_sftp_session(host, port, user, password)
+
+    jpxlab.fetch_and_convert(sftp, src, out_dir)
+
     return 0
 
 
