@@ -26,10 +26,8 @@ def get_sftp_session(host, port, username, password):
 
 def _load_chunk(z):
     """Load the entire chunk and parse the header
-
     Args:
         z (ZipExtFile)  : zip input stream
-
     Returns:
         (
             payload,    # payload of the chunk
@@ -44,6 +42,9 @@ def _load_chunk(z):
     size_header = struct.calcsize(fmt_header)
 
     buf = z.read(size_header)
+
+    if len(buf)<size_header:
+        return None
 
     # Extract the header
     header = struct.unpack(fmt_header, buf)
@@ -69,7 +70,6 @@ def _load_chunk(z):
 
 def _parse_chunk(payload):
     """Parse the chunk and yields for each tag
-
     Args:
         payload(str) : payload of the chunk
     """
@@ -94,10 +94,12 @@ def _parse_chunk(payload):
                 cur_flag, cur_price, cur_sign, cur_timestamp, cur_changed,
                 _, _) = val_4p
 
+            time = list(struct.unpack('2s2s2s6s',cur_timestamp))
+
             yield (
                 tag_id,
                 (
-                    cur_timestamp.decode("utf-8"),
+                    (int(time[0]) * 3600 + int(time[1]) * 60 + int(time[2])) * 1000000 + int(time[3]),
                     int(o_price),
                     int(h_price),
                     int(l_price),
@@ -110,10 +112,12 @@ def _parse_chunk(payload):
             val_vl = struct.unpack(fmt_vl, c)
             _, _, _, flag, vol, timestamp, _ = val_vl
 
+            time = list(struct.unpack('2s2s2s',timestamp))
+
             yield (
                 tag_id,
                 (
-                    timestamp.decode("utf-8"),
+                    (int(time[0]) * 3600 + int(time[1]) * 60 + int(time[2])) * 1000000,
                     int(vol),
                 )
             )
@@ -125,7 +129,6 @@ def _parse_chunk(payload):
 
 def _dump_to_h5(z, store):
     """Convert and dump to h5
-
     Args:
         z (ZipExtFile)             : zip input stream
         store (pytable out stream) : pytable out
@@ -138,10 +141,9 @@ def _dump_to_h5(z, store):
 
     while True:
 
-        # TODO: need to implement EOF checking
         chunk = _load_chunk(z)
         if chunk is None:
-            continue
+            break
 
         payload, exchange, session, category, security, chunk_size = chunk
         key = (exchange, security)
@@ -151,28 +153,20 @@ def _dump_to_h5(z, store):
             if typ == b'4P':
 
                 if key not in out_price:
-                    out_price_idx[key] = store.create_earray(
-                        '/{}/price_idx'.format(exchange),
-                        security, obj=row[:1], createparents=True)
                     out_price[key] = store.create_earray(
                         '/{}/price'.format(exchange),
-                        security, obj=row[1:], createparents=True)
+                        security, obj=[list(row)], createparents=True)
                 else:
-                    out_price_idx[key].append(row[:1])
-                    out_price[key].append(row[1:])
+                    out_price[key].append([list(row)])
 
             elif typ == b'VL':
 
                 if key not in out_volume:
-                    out_volume_idx[key] = store.create_earray(
-                        '/{}/volume_idx'.format(exchange),
-                        security, obj=row[:1], createparents=True)
                     out_volume[key] = store.create_earray(
                         '/{}/volume'.format(exchange),
-                        security, obj=row[1:], createparents=True)
+                        security, obj=[list(row)], createparents=True)
                 else:
-                    out_volume_idx[key].append(row[:1])
-                    out_volume[key].append(row[1:])
+                    out_volume[key].append([list(row)])
 
 
 def _get_out_filename(src, out_dir):
@@ -200,6 +194,7 @@ def fetch_and_convert(sftp, src, out_dir):
 
         if src.endswith(".zip"):
             zip_file = ZipFile(f, allowZip64=True)
+            zip_file.getinfo(zip_file.namelist()[0]).file_size = 2**64 - 1
             # Open the first compressed file
             # (Only expecting one file inside the ZIP)
             with zip_file.open(zip_file.namelist()[0]) as z:
@@ -217,3 +212,4 @@ def fetch_and_convert(sftp, src, out_dir):
             out_filename = _get_out_filename(src, out_dir)
             with tables.open_file(out_filename, mode='w') as store:
                 _dump_to_h5(f, store)
+        return out_filename
