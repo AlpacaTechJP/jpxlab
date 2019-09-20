@@ -42,7 +42,7 @@ def _load_chunk(z):
     size_header = struct.calcsize(fmt_header)
 
     buf = z.read(size_header)
-
+    
     if len(buf)<size_header:
         return None
 
@@ -54,9 +54,9 @@ def _load_chunk(z):
     chunk_size = int(chunk_size)
 
     # Read Block
-    payload = z.read(chunk_size - size_header)
-    exchange = exchange.strip().decode("utf-8")
-    security = security.strip().decode("utf-8")
+    payload = z.read(chunk_size - size_header).strip(b'\x11')
+    exchange = 'X' + exchange.strip().decode("utf-8")
+    security = 'S' + security.strip().decode("utf-8")
 
     return (
         payload,
@@ -93,25 +93,26 @@ def _parse_chunk(payload):
                 l_stop, l_flag, l_price, l_sign, l_timestamp, l_changed,
                 cur_flag, cur_price, cur_sign, cur_timestamp, cur_changed,
                 _, _) = val_4p
-
-            time = list(struct.unpack('2s2s2s6s',cur_timestamp))
-
-            yield (
-                tag_id,
-                (
-                    (int(time[0]) * 3600 + int(time[1]) * 60 + int(time[2])) * 1000000 + int(time[3]),
-                    int(o_price),
-                    int(h_price),
-                    int(l_price),
-                    int(cur_price),
+            
+            if len(cur_timestamp.strip()) > 0:
+                time = list(struct.unpack('2s2s2s6s',cur_timestamp))
+            
+                yield (
+                    tag_id,
+                    (
+                        (int(time[0]) * 3600 + int(time[1]) * 60 + int(time[2])) * 1000000 + int(time[3]),                 
+                        int(o_price),
+                        int(h_price),
+                        int(l_price),
+                        int(cur_price),
+                    )
                 )
-            )
 
         # Check if it is a Volumne block
         elif tag_id == b'VL':
             val_vl = struct.unpack(fmt_vl, c)
             _, _, _, flag, vol, timestamp, _ = val_vl
-
+            
             time = list(struct.unpack('2s2s2s',timestamp))
 
             yield (
@@ -165,7 +166,7 @@ def _dump_to_h5(z, store):
                     out_volume[key] = store.create_earray(
                         '/{}/volume'.format(exchange),
                         security, obj=[list(row)], createparents=True)
-                else:
+                else:                    
                     out_volume[key].append([list(row)])
 
 
