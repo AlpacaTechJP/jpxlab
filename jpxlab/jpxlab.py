@@ -9,6 +9,7 @@ import paramiko
 import struct
 import tables
 from io import BytesIO
+from tqdm import tqdm
 
 
 def _load_chunk(stream: BytesIO) -> tuple:
@@ -149,7 +150,7 @@ def _get_security_code(exchange: str, security: str) -> str:
     return m.get(exchange) + security
 
 
-def _dump_to_h5(stream: BytesIO, store: tables.File):
+def _dump_to_h5(stream: BytesIO, store: tables.File, file_size: int):
     """Convert and dump to h5
     Args:
         stream (InputStream) : input stream
@@ -158,41 +159,43 @@ def _dump_to_h5(stream: BytesIO, store: tables.File):
 
     out_price = dict()
     out_volume = dict()
+    
+    with tqdm(total = file_size, desc = 'Streaming', unit = 'B', unit_scale = 1, ncols = 100) as pbar:
+        while True:
 
-    while True:
+            chunk = _load_chunk(stream)
+            if chunk is None:
+                break
 
-        chunk = _load_chunk(stream)
-        if chunk is None:
-            break
+            payload, exchange, session, category, security, chunk_size = chunk
+            key = (exchange, security)
 
-        payload, exchange, session, category, security, chunk_size = chunk
-        key = (exchange, security)
+            for typ, row in _parse_chunk(payload):
 
-        for typ, row in _parse_chunk(payload):
+                if typ == b"4P":
 
-            if typ == b"4P":
+                    if key not in out_price:
+                        out_price[key] = store.create_earray(
+                            "/price",
+                            _get_security_code(exchange, security),
+                            obj=[list(row)],
+                            createparents=True,
+                        )
+                    else:
+                        out_price[key].append([list(row)])
 
-                if key not in out_price:
-                    out_price[key] = store.create_earray(
-                        "/price",
-                        _get_security_code(exchange, security),
-                        obj=[list(row)],
-                        createparents=True,
-                    )
-                else:
-                    out_price[key].append([list(row)])
+                elif typ == b"VL":
 
-            elif typ == b"VL":
-
-                if key not in out_volume:
-                    out_volume[key] = store.create_earray(
-                        "/volume",
-                        _get_security_code(exchange, security),
-                        obj=[list(row)],
-                        createparents=True,
-                    )
-                else:
-                    out_volume[key].append([list(row)])
+                    if key not in out_volume:
+                        out_volume[key] = store.create_earray(
+                            "/volume",
+                            _get_security_code(exchange, security),
+                            obj=[list(row)],
+                            createparents=True,
+                        )
+                    else:
+                        out_volume[key].append([list(row)])
+            pbar.update(chunk_size)
 
 
 def _get_out_filename(src: str, out_dir: str, suffix: str) -> str:
@@ -275,10 +278,10 @@ def _resample_volumes(node):
     return df
 
 
-def _convert_and_store(z, out_filename):
+def _convert_and_store(z, out_filename, file_size):
 
     with tables.open_file(out_filename, mode="w") as store:
-        _dump_to_h5(z, store)
+        _dump_to_h5(z, store, file_size)
 
 
 def get_sftp_session(host: str, port: int, username: str, password: str):
@@ -305,26 +308,28 @@ def _stream_convert(stream, out_filename: str, mode: str):
         zip_file = ZipFile(stream, allowZip64=True)
 
         # Hack to workaround the broken file size in the header
-        zip_file.getinfo(zip_file.namelist()[0]).file_size = 2 ** 64 - 1
+        file_size = zip_file.getinfo(zip_file.namelist()[0]).file_size
+        if file_size < 2 ** 33:            
+            zip_file.getinfo(zip_file.namelist()[0]).file_size = 2 ** 64 - 1
+            file_size = 0
 
         # Open the first compressed file
         # (Only expecting one file inside the ZIP)
         with zip_file.open(zip_file.namelist()[0]) as z:
-            _convert_and_store(z, out_filename)
+            _convert_and_store(z, out_filename, file_size)
 
     elif mode == "gz":
         with gzip.open(stream) as z:
-            _convert_and_store(z, out_filename)
+            _convert_and_store(z, out_filename, 0)
 
 
 def fetch_and_convert(sftp, src: str, out_dir: str) -> str:
     """Fetch an archive from the SFTP server and convert it into h5
-
+    
     Args:
         sftp (SFTP Session): the sftp session
         src           (str): source path on the sftp server
         out_dir       (str): output directory
-
     Returns:
         filename (str)
     """
@@ -334,13 +339,13 @@ def fetch_and_convert(sftp, src: str, out_dir: str) -> str:
 
     with sftp.open(src, "r") as f:
         _stream_convert(f, out_filename, mode)
-
+        print("Finished Streaming.")
     return out_filename
 
 
 def resample(src: str, out_filename: str):
     """Resample raw h5 file
-
+    
     Args:
         src          (str): source file name
         out_filename (str): output file name
@@ -352,13 +357,14 @@ def resample(src: str, out_filename: str):
         for group in reader.root._f_walk_groups():
 
             if group._v_name == 'price':
-                for node in group._f_iter_nodes():
+                for node in tqdm(group._f_list_nodes(), desc = 'Resampling Prices', unit = ' Securities', ncols = 100):
                     writer.put(
                         key=node._v_pathname,
                         value=_resample_prices(node))
 
             elif group._v_name == 'volume':
-                for node in group._f_iter_nodes():
+                for node in tqdm(group._f_list_nodes(), desc = 'Resampling Volumes', unit = ' Securities', ncols = 100):
                     writer.put(
                         key=node._v_pathname,
                         value=_resample_volumes(node))
+        print("Finished Resampling.")
