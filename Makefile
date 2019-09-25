@@ -86,3 +86,14 @@ dist: clean ## builds source and wheel package
 
 install: clean ## install the package to the active Python's site-packages
 	python setup.py install
+
+notebook:
+	jupyter notebook
+
+notebook_docker:
+	docker run -i -t -v `pwd`:/opt/jpxlab -p 8888:8888 continuumio/anaconda3 /bin/bash \
+		-c "/opt/conda/bin/conda install jupyter -y --quiet \
+			&& mkdir /opt/jpxlab/notebooks \
+			&& /opt/conda/bin/jupyter notebook \
+			--allow-root --notebook-dir=/opt/jpxlab/notebooks --ip='*' \
+			--port=8888 --no-browser"
