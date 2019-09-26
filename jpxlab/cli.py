@@ -30,7 +30,7 @@ def fetch(host, port, user, src, out_dir):
     password = os.environ.get("JPXLAB_SFTP_PASS", None)
     if password is None:
         password = click.prompt(
-            'Please enter a password for the sftp server', type=str)
+            'Please enter a password for the sftp server', type=str, hide_input=True)
 
     sftp = jpxlab.get_sftp_session(host, port, user, password)
 
@@ -68,7 +68,7 @@ def fetch_resample(host, port, user, src, out_dir):
     password = os.environ.get("JPXLAB_SFTP_PASS", None)
     if password is None:
         password = click.prompt(
-            'Please enter a password for the sftp server', type=str)
+            'Please enter a password for the sftp server', type=str, hide_input=True)
 
     sftp = jpxlab.get_sftp_session(host, port, user, password)
 
