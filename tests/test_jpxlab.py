@@ -163,3 +163,6 @@ def test_hdf5_file_creation(tmpdir):
         price2 = next(prices)
         assert price2._v_name == 't1234'
         assert price2.nrows == 1
+
+    os.remove(out_filename)
+    os.rmdir(out_dir)
