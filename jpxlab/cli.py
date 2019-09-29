@@ -22,17 +22,21 @@ def cmd():
 @click.option(
     '-u', '--user',
     help='user id to login to the sftp server')
+@click.option('-l', '--local', is_flag=True, help='Required if working with a local file')
 @click.option('-s', '--src', help='source path')
 @click.option('-o', '--out-dir', default="./", help='output directory')
-def fetch(host, port, user, src, out_dir):
+def fetch(host, port, user, local, src, out_dir):
     """Console script for jpxlab."""
+    
+    if local:
+        sftp = None
+    else:
+        password = os.environ.get("JPXLAB_SFTP_PASS", None)
+        if password is None:
+            password = click.prompt(
+                'Please enter a password for the sftp server', type=str, hide_input=True)
 
-    password = os.environ.get("JPXLAB_SFTP_PASS", None)
-    if password is None:
-        password = click.prompt(
-            'Please enter a password for the sftp server', type=str, hide_input=True)
-
-    sftp = jpxlab.get_sftp_session(host, port, user, password)
+        sftp = jpxlab.get_sftp_session(host, port, user, password)
 
     jpxlab.fetch_and_convert(sftp, src, out_dir)
 
@@ -60,17 +64,21 @@ def resample(src, out):
 @click.option(
     '-u', '--user',
     help='user id to login to the sftp server')
+@click.option('-l', '--local', is_flag=True, help='Required if working with a local file')
 @click.option('-s', '--src', help='source path')
 @click.option('-o', '--out-dir', default="./", help='output directory')
-def fetch_resample(host, port, user, src, out_dir):
+def fetch_resample(host, port, user, local, src, out_dir):
     """Fetch and resample"""
+    
+    if local:
+        sftp = None
+    else:
+        password = os.environ.get("JPXLAB_SFTP_PASS", None)
+        if password is None:
+            password = click.prompt(
+                'Please enter a password for the sftp server', type=str, hide_input=True)
 
-    password = os.environ.get("JPXLAB_SFTP_PASS", None)
-    if password is None:
-        password = click.prompt(
-            'Please enter a password for the sftp server', type=str, hide_input=True)
-
-    sftp = jpxlab.get_sftp_session(host, port, user, password)
+        sftp = jpxlab.get_sftp_session(host, port, user, password)
 
     out_filename = jpxlab.fetch_and_convert(sftp, src, out_dir)
 

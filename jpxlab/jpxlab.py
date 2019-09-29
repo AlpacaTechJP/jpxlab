@@ -327,19 +327,22 @@ def fetch_and_convert(sftp, src: str, out_dir: str) -> str:
     """Fetch an archive from the SFTP server and convert it into h5
     
     Args:
-        sftp (SFTP Session): the sftp session
-        src           (str): source path on the sftp server
-        out_dir       (str): output directory
+        sftp (SFTP Session): the sftp session or None if local file
+        src           (str): source path on the sftp server or local disk
+        out_dir       (str): output directory on local disk
     Returns:
         filename (str)
     """
 
     out_filename = _get_out_filename(src, out_dir, "_raw")
     mode = os.path.splitext(src)[-1].replace(".", "")
-
-    with sftp.open(src, "r") as f:
-        _stream_convert(f, out_filename, mode)
-        print("Finished Streaming.")
+    
+    if sftp == None:
+        _stream_convert(src, out_filename, mode)
+    else:
+        with sftp.open(src, "r") as f:
+            _stream_convert(f, out_filename, mode)
+    print("Finished Streaming.")
     return out_filename
 
 
