@@ -32,7 +32,25 @@ Features
 * Historical data conversion
 * [TODO] Example notebook to analyze the data
 
-Usage
+Usage: download
+--------
+
+* Prerequisites: You have to contact with JPX's account manager and get FTP account
+
+.. code-block::
+
+  $ cd tools/fetcher
+  $ vim fetcher.sh
+  
+  # edit `FTP_USER` and `FTP_PASS`
+  
+  $ ./build.sh
+  $ ./fetcher.sh 20191008
+  
+* The file is downloaded into `<repos root>/downloads`
+
+
+Usage: convert
 --------
 
 .. code-block::
@@ -47,6 +65,16 @@ Usage
       -o, --out-dir TEXT  output directory
       --help              Show this message and exit.
 
+Usage: launch the jupyter notebook (locally)
+--------
+
+  $ make notebook
+
+Usage: launch the jupyter notebook (in docker)
+--------
+
+  $ make notebook_docker
+  
 Credits
 -------
 
