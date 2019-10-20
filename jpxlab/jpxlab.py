@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
 from zipfile import ZipFile
+import datetime
 import gzip
 import numpy as np
 import os
 import pandas as pd
-import paramiko
 import struct
 import tables
 from io import BytesIO
@@ -51,7 +51,7 @@ def _load_chunk(stream: BytesIO) -> tuple:
     return (payload, exchange, session, category, security, chunk_size)
 
 
-def _parse_chunk(payload: bytes) -> tuple:
+def _parse_chunk(payload: bytes, date_offset_epoch: int) -> tuple:
     """Parse the chunk and yields for each tag
 
     Extract `4P` and `VL` tags. Detailed explanations can be found in
@@ -59,7 +59,8 @@ def _parse_chunk(payload: bytes) -> tuple:
     "04_Market Information System FLEX Connection Specification Index¥Statistics group DS.15.10.pdf"
 
     Args:
-        payload(str) : payload of the chunk
+        payload     (str) : payload of the chunk
+        date_offset (int) : base date offet in epoch
     """
 
     # Define block formats
@@ -109,7 +110,9 @@ def _parse_chunk(payload: bytes) -> tuple:
                 yield (
                     tag_id,
                     (
-                        (int(h) * 3600 + int(m) * 60 + int(s)) * 1000000 + int(ms),
+                        (date_offset_epoch + int(h) * 3600 + int(m) * 60 + int(s))
+                        * 1000000
+                        + int(ms),
                         int(o_price),
                         int(h_price),
                         int(l_price),
@@ -125,7 +128,14 @@ def _parse_chunk(payload: bytes) -> tuple:
 
             h, m, s = list(struct.unpack("2s2s2s", timestamp))
 
-            yield (tag_id, ((int(h) * 3600 + int(m) * 60 + int(s)) * 1000000, int(vol)))
+            yield (
+                tag_id,
+                (
+                    (date_offset_epoch + int(h) * 3600 + int(m) * 60 + int(s))
+                    * 1000000,
+                    int(vol),
+                ),
+            )
 
         else:
             # we don't need other chunks
@@ -144,15 +154,21 @@ def _get_security_code(exchange: str, security: str) -> str:
     return m.get(exchange) + security
 
 
-def _dump_to_h5(stream: BytesIO, store: tables.File, file_size: int):
+def _dump_to_h5(
+    stream: BytesIO, store: tables.File, file_size: int, date: datetime.date
+):
     """Convert and dump to h5
     Args:
         stream (InputStream) : input stream
         store (tables.File)  : pytable output
+        file_size (int)      : size of the file
+        date (date)          : date of the file
     """
 
     out_price = dict()
     out_volume = dict()
+
+    date_offset_epoch = datetime.datetime.fromordinal(date.toordinal()).timestamp()
 
     with tqdm(
         total=file_size, desc="Streaming", unit="B", unit_scale=1, ncols=100
@@ -166,7 +182,7 @@ def _dump_to_h5(stream: BytesIO, store: tables.File, file_size: int):
             payload, exchange, session, category, security, chunk_size = chunk
             key = (exchange, security)
 
-            for typ, row in _parse_chunk(payload):
+            for typ, row in _parse_chunk(payload, date_offset_epoch):
 
                 if typ == b"4P":
 
@@ -194,22 +210,22 @@ def _dump_to_h5(stream: BytesIO, store: tables.File, file_size: int):
             pbar.update(chunk_size)
 
 
-def _get_out_filename(src: str, out_dir: str, suffix: str) -> str:
-    """
-    """
+def _get_outpath(src: str, suffix: str) -> str:
     if src.endswith(".zip"):
         return os.path.join(
-            out_dir, os.path.basename(src).replace(".zip", "{}.h5").format(suffix)
+            os.path.dirname(src),
+            os.path.basename(src).replace(".zip", "{}.h5").format(suffix),
         )
     elif src.endswith(".gz"):
         return os.path.join(
-            out_dir, os.path.basename(src).replace(".gz", "`{}.h5").format(suffix)
+            os.path.dirname(src),
+            os.path.basename(src).replace(".gz", "{}.h5").format(suffix),
         )
     else:
-        return os.path.join(out_dir, os.path.basename(src)) + "{}.h5".format(suffix)
+        raise ValueError("Unsupported suffix: {}".format(src))
 
 
-def _resample_prices(node):
+def _resample_prices(node, freq):
     """Resample the sequence of prices and return as a DataFrame
     """
 
@@ -229,17 +245,17 @@ def _resample_prices(node):
         pd.DataFrame(data=np.array(node), columns=columns)
         .astype(columns_dtype)
         .set_index(columns[0], inplace=False)
-    )
+    ).sort_index()
 
     # apply decimal points
     fixed = 10 ** df.loc[:, "flag"]
-    df.loc[:, "open"] /= fixed
-    df.loc[:, "high"] /= fixed
-    df.loc[:, "low"] /= fixed
     df.loc[:, "current"] /= fixed
 
+    # Overwrite by current price
+    df.loc[:, "open"] = df.loc[:, "high"] = df.loc[:, "low"] = df.loc[:, "current"]
+
     # resample
-    df = df.resample("1S").agg(agg).dropna()
+    df = df.resample(freq).agg(agg).dropna()
 
     # rename "current" -> "close"
     df = df.rename(columns={"current": "close"})
@@ -247,7 +263,7 @@ def _resample_prices(node):
     return df
 
 
-def _resample_volumes(node):
+def _resample_volumes(node, freq):
     """Resample the sequence of volumes and return as a DataFrame
 
     The volume column is recorded as cumulative volume, so it has to be
@@ -268,34 +284,18 @@ def _resample_volumes(node):
     df.loc[:, "volume"] = df.loc[:, "volume"].diff()
 
     # resample
-    df = df.resample("1S").sum()
+    df = df.resample(freq).sum()
 
     return df
 
 
-def _convert_and_store(z, out_filename, file_size):
+def _convert_and_store(z, outpath, file_size, date):
 
-    with tables.open_file(out_filename, mode="w") as store:
-        _dump_to_h5(z, store, file_size)
-
-
-def get_sftp_session(host: str, port: int, username: str, password: str):
-    """Get a SFTP session
-
-    Args:
-        host(str)       : host name
-        port:(int)      : port number
-        username(str)   : user name
-
-    Returns:
-        A SFTP session object
-    """
-    transport = paramiko.Transport((host, port))
-    transport.connect(None, username, password)
-    return paramiko.SFTPClient.from_transport(transport)
+    with tables.open_file(outpath, mode="w") as store:
+        _dump_to_h5(z, store, file_size, date)
 
 
-def _stream_convert(stream, out_filename: str, mode: str):
+def _stream_convert(stream, outpath: str, mode: str, date: str):
 
     assert mode in ("zip", "gz")
 
@@ -311,44 +311,48 @@ def _stream_convert(stream, out_filename: str, mode: str):
         # Open the first compressed file
         # (Only expecting one file inside the ZIP)
         with zip_file.open(zip_file.namelist()[0]) as z:
-            _convert_and_store(z, out_filename, file_size)
+            _convert_and_store(z, outpath, file_size, date)
 
     elif mode == "gz":
         with gzip.open(stream) as z:
-            _convert_and_store(z, out_filename, 0)
+            _convert_and_store(z, outpath, 0, date)
 
 
-def fetch_and_convert(sftp, src: str, out_dir: str) -> str:
+def _extract_date(filename: str):
+    return datetime.datetime.strptime(
+        os.path.basename(filename), "StandardEquities_%Y%m%d.zip"
+    )
+
+
+def fetch_and_convert(src: str, suffix: str = "") -> str:
     """Fetch an archive from the SFTP server and convert it into h5
 
     Args:
-        sftp (SFTP Session): the sftp session or None if local file
-        src           (str): source path on the sftp server or local disk
-        out_dir       (str): output directory on local disk
+        src           (str): source path of the raw zip file
     Returns:
         filename (str)
     """
 
-    out_filename = _get_out_filename(src, out_dir, "_raw")
+    outpath = _get_outpath(src, suffix)
     mode = os.path.splitext(src)[-1].replace(".", "")
 
-    if sftp is None:
-        _stream_convert(src, out_filename, mode)
-    else:
-        with sftp.open(src, "r") as f:
-            _stream_convert(f, out_filename, mode)
-    return out_filename
+    date = _extract_date(src)
+
+    _stream_convert(src, outpath, mode, date)
+
+    return outpath
 
 
-def resample(src: str, out_filename: str):
+def resample(src: str, outpath: str, freq: str):
     """Resample raw h5 file
 
     Args:
-        src          (str): source file name
-        out_filename (str): output file name
+        src     (str): source file name
+        outpath (str): output file name
+        freq    (str): frequency of resampling
     """
 
-    with pd.HDFStore(out_filename, mode="w", complevel=9) as writer, tables.open_file(
+    with pd.HDFStore(outpath, mode="w", complevel=9) as writer, tables.open_file(
         src, mode="r"
     ) as reader:
 
@@ -361,7 +365,7 @@ def resample(src: str, out_filename: str):
                     unit=" Securities",
                     ncols=100,
                 ):
-                    writer.put(key=node._v_pathname, value=_resample_prices(node))
+                    writer.put(key=node._v_pathname, value=_resample_prices(node, freq))
 
             elif group._v_name == "volume":
                 for node in tqdm(
@@ -370,4 +374,6 @@ def resample(src: str, out_filename: str):
                     unit=" Securities",
                     ncols=100,
                 ):
-                    writer.put(key=node._v_pathname, value=_resample_volumes(node))
+                    writer.put(
+                        key=node._v_pathname, value=_resample_volumes(node, freq)
+                    )
