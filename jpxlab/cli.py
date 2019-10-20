@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """Console script for jpxlab."""
+from joblib import Parallel, delayed
 import click
 import jpxlab
 import sys
@@ -12,36 +13,25 @@ def cmd():
 
 
 @cmd.command()
-@click.option("-s", "--src", help="source path")
-@click.option("-o", "--out", help="output path")
-def resample(src, out):
+@click.option("-f", "--freq", "freq", type=str, help="frequency of resampling")
+@click.argument("files", nargs=-1, type=click.Path())
+def resample(freq, files):
     """resample the h5 file into 1sec aggregated dataframe"""
 
-    jpxlab.resample(src, out)
+    Parallel(n_jobs=-1)(
+        delayed(jpxlab.resample)(f, f.replace(".h5", "_{}.h5".format(freq)), freq)
+        for f in files
+    )
 
     return 0
 
 
 @cmd.command()
-@click.option("-s", "--src", help="source path")
-@click.option("-o", "--out-dir", default="./", help="output directory")
-def convert(src, out_dir):
-    """convert raw file to h5"""
+@click.argument("files", nargs=-1, type=click.Path())
+def convert(files):
+    """convert raw zip files to h5"""
 
-    jpxlab.fetch_and_convert(None, src, out_dir)
-
-    return 0
-
-
-@cmd.command()
-@click.option("-s", "--src", help="source path")
-@click.option("-o", "--out-dir", default="./", help="output directory")
-def convert_resample(src, out_dir):
-    """convert and resample"""
-
-    out_filename = jpxlab.fetch_and_convert(None, src, out_dir)
-
-    jpxlab.resample(out_filename, out_filename.replace("_raw.h5", ".h5"))
+    Parallel(n_jobs=-1)(delayed(jpxlab.fetch_and_convert)(f) for f in files)
 
     return 0
 
