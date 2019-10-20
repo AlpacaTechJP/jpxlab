@@ -50,20 +50,33 @@ Usage: download
 * The file is downloaded into `<repos root>/downloads`
 
 
-Usage: convert
+Usage: convert from raw zip files to h5
 --------
 
 .. code-block::
 
-  $ python cli.py convert-resample --help
-    Usage: cli.py convert-resample [OPTIONS]
+    $ python cli.py convert --help
+    Usage: cli.py convert [OPTIONS] [FILES]...
 
-      convert and resample
+      convert raw zip files to h5
 
     Options:
-      -s, --src TEXT      source path
-      -o, --out-dir TEXT  output directory
-      --help              Show this message and exit.
+      --help  Show this message and exit.
+      
+Usage: resample h5 files into aggregated dataframe
+--------
+
+.. code-block::
+
+    $ python cli.py resample --help
+    Usage: cli.py resample [OPTIONS] [FILES]...
+
+      resample the h5 file into aggregated dataframe
+
+    Options:
+      -f, --freq TEXT  frequency of resampling
+      --help           Show this message and exit.
+
 
 Usage: launch the jupyter notebook (locally)
 --------
