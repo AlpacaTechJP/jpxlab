@@ -16,7 +16,7 @@ def cmd():
 @click.option("-f", "--freq", "freq", type=str, help="frequency of resampling")
 @click.argument("files", nargs=-1, type=click.Path())
 def resample(freq, files):
-    """resample the h5 file into 1sec aggregated dataframe"""
+    """resample the h5 file into aggregated dataframe"""
 
     Parallel(n_jobs=-1)(
         delayed(jpxlab.resample)(f, f.replace(".h5", "_{}.h5".format(freq)), freq)
