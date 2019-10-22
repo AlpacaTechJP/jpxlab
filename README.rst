@@ -40,14 +40,16 @@ Usage: download
 .. code-block::
 
   $ cd tools/fetcher
-  $ vim fetcher.sh
+  $ vim fetch.sh
   
   # edit `FTP_USER` and `FTP_PASS`
   
   $ ./build.sh
-  $ ./fetcher.sh 20191008
+  $ ./fetch.sh 20191008
   
 * The file is downloaded into `<repos root>/downloads`
+* You can also specify wiledcard to dowonload multiple files in batch (e.g. `./fetch.sh '201909??'`)
+* It fetches from under `/archives/` so most recent files are out of scope
 
 
 Usage: convert from raw zip files to h5
@@ -74,7 +76,7 @@ Usage: resample h5 files into aggregated dataframe
       resample the h5 file into aggregated dataframe
 
     Options:
-      -f, --freq TEXT  frequency of resampling
+      -f, --freq TEXT  frequency of resampling (e.g. '1H' for hourly aggregation)
       --help           Show this message and exit.
 
 
