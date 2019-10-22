@@ -1,1 +1,1 @@
-docker build -t aria2 .
+docker build -t lftp .
