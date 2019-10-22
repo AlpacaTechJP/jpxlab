@@ -1,3 +1,3 @@
 FROM alpine:edge
 
-RUN  apk add --no-cache aria2
+RUN  apk add --no-cache lftp

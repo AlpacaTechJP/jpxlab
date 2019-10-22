@@ -1,8 +1,16 @@
 #!/bin/bash
 
+# A simple ftp downloader for FLEX Historical
+#
+# Usage: ./fetch.sh <YYYYMMDD>
+#
+# - Wildcard is allowed to fetch multiple files
+# - Downloaded files go `/jpxlab/downloads`
+#
+
 # edit these
-FTP_USER=
-FTP_PASS=
+FTP_USER=$FTP_USER
+FTP_PASS=$FTP_PASS
 
 [ -z "$FTP_USER" ] && { echo "Edit fetch.sh to set FTP_USER"; exit 1; }
 [ -z "$FTP_PASS" ] && { echo "Edit fetch.sh to set FTP_PASS"; exit 1; }
@@ -12,10 +20,8 @@ FTP_PASS=
 DLDIR=$(cd "$(dirname "$0")./../downloads"; pwd)
 DATE=$1
 
-docker run \
+docker run -it \
   -v $DLDIR:/opt/ \
-  aria2 aria2c -c \
-    --ftp-user=$FTP_USER \
-    --ftp-passwd=$FTP_PASS \
-    -d /opt/ \
-    ftp://ftp.tmi.tse.or.jp/archives/$DATE/StandardEquities_$DATE.zip
+  lftp lftp -u $FTP_USER,$FTP_PASS \
+  -e "lcd /opt; mget /archives/$DATE/StandardEquities_*.zip" \
+  ftp.tmi.tse.or.jp
