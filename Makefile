@@ -91,7 +91,9 @@ notebook:
 	jupyter notebook
 
 notebook_docker:
-	docker run -i -t -v `pwd`:/opt/jpxlab -p 8888:8888 continuumio/anaconda3 /bin/bash \
+	docker run -i -t \
+		-v `pwd`:/opt/jpxlab \
+		-p 8888:8888 continuumio/anaconda3 /bin/bash \
 		-c "/opt/conda/bin/conda install jupyter -y --quiet \
 			&& mkdir -p /opt/jpxlab/notebooks \
 			&& /opt/conda/bin/jupyter notebook \
