@@ -101,8 +101,12 @@ def _parse_chunk(payload: bytes, date_offset_epoch: int) -> tuple:
                 cur_timestamp,
                 cur_changed,
                 _,
-                _,
+                closing_flag,
             ) = val_4p
+
+            # skip invalid price
+            if closing_flag == b'1':
+                continue
 
             if len(cur_timestamp.strip()) > 0:
                 h, m, s, ms = list(struct.unpack("2s2s2s6s", cur_timestamp))
@@ -113,9 +117,6 @@ def _parse_chunk(payload: bytes, date_offset_epoch: int) -> tuple:
                         (date_offset_epoch + int(h) * 3600 + int(m) * 60 + int(s))
                         * 1000000
                         + int(ms),
-                        int(o_price),
-                        int(h_price),
-                        int(l_price),
                         int(cur_price),
                         int(cur_flag),
                     ),
@@ -225,20 +226,16 @@ def _get_outpath(src: str, suffix: str) -> str:
         raise ValueError("Unsupported suffix: {}".format(src))
 
 
-def _resample_prices(node, freq):
-    """Resample the sequence of prices and return as a DataFrame
+def _extract_prices(node):
+    """Extract the sequence of prices and return as a Series
     """
 
-    columns = ["time", "open", "high", "low", "current", "flag"]
+    columns = ["time", "current", "flag"]
     columns_dtype = {
         "time": "datetime64[us]",
-        "open": np.float32,
-        "high": np.float32,
-        "low": np.float32,
         "current": np.float32,
         "flag": "int32",
     }
-    agg = {"open": "first", "high": "max", "low": "min", "current": "last"}
 
     # create a dataframe
     df = (
@@ -251,20 +248,11 @@ def _resample_prices(node, freq):
     fixed = 10 ** df.loc[:, "flag"]
     df.loc[:, "current"] /= fixed
 
-    # Overwrite by current price
-    df.loc[:, "open"] = df.loc[:, "high"] = df.loc[:, "low"] = df.loc[:, "current"]
-
-    # resample
-    df = df.resample(freq).agg(agg).dropna()
-
-    # rename "current" -> "close"
-    df = df.rename(columns={"current": "close"})
-
-    return df
+    return df["current"]
 
 
-def _resample_volumes(node, freq):
-    """Resample the sequence of volumes and return as a DataFrame
+def _extract_volumes(node):
+    """Extract the sequence of volumes and return as a Series
 
     The volume column is recorded as cumulative volume, so it has to be
     digitized by taking diff.
@@ -281,12 +269,19 @@ def _resample_volumes(node, freq):
     )
 
     # calc delta
+    initial_volume = df["volume"].iloc[0]
     df.loc[:, "volume"] = df.loc[:, "volume"].diff()
+    df.iloc[0] = initial_volume
 
-    # resample
-    df = df.resample(freq).sum()
+    return df["volume"]
 
-    return df
+
+def _resample_ohlc(price, volume, freq):
+    return pd.concat([
+        price.resample(freq).ohlc(),
+        volume.resample(freq).sum().to_frame("volume"),
+        (price * volume.values).resample(freq).sum().to_frame("amount"),
+    ], axis=1)
 
 
 def _convert_and_store(z, outpath, file_size, date):
@@ -359,21 +354,21 @@ def resample(src: str, outpath: str, freq: str):
         for group in reader.root._f_walk_groups():
 
             if group._v_name == "price":
-                for node in tqdm(
+                for node_prices in tqdm(
                     group._f_list_nodes(),
-                    desc="Resampling Prices",
+                    desc="Resampling",
                     unit=" Securities",
                     ncols=100,
                 ):
-                    writer.put(key=node._v_pathname, value=_resample_prices(node, freq))
-
-            elif group._v_name == "volume":
-                for node in tqdm(
-                    group._f_list_nodes(),
-                    desc="Resampling Volumes",
-                    unit=" Securities",
-                    ncols=100,
-                ):
-                    writer.put(
-                        key=node._v_pathname, value=_resample_volumes(node, freq)
+                    # combine prices and volumes
+                    node_volumes = reader.get_node(
+                        node_prices._v_pathname.replace("price", "volume")
                     )
+
+                    # resample
+                    df = _resample_ohlc(
+                        _extract_prices(node_prices),
+                        _extract_volumes(node_volumes),
+                        freq)
+
+                    writer.put(key=node_prices._v_name, value=df)
