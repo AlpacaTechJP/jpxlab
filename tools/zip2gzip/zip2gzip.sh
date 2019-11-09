@@ -1,6 +1,6 @@
 #!/bin/bash
 
-if (( $# < 1 )); then
+if (( $# != 1 )); then
   echo "usage: zip2gzip.sh <zipfilename>"
   exit 1
 fi
