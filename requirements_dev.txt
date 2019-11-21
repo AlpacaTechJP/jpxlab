@@ -12,4 +12,6 @@ pytest==3.8.2
 pytest-runner==4.2
 
 tables==3.4.4
-tqdm==4.36.2
+tqdm==4.38.0
+
+pandas==0.25.3
