@@ -15,3 +15,4 @@ tables==3.4.4
 tqdm==4.38.0
 
 pandas<0.21
+Click>=6.0

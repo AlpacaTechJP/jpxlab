@@ -11,7 +11,10 @@ with open("README.rst") as readme_file:
 with open("HISTORY.rst") as history_file:
     history = history_file.read()
 
-requirements = ["Click>=6.0"]
+with open('requirements_dev.txt') as f:
+    requirements = f.read().splitlines()
+
+requirements = requirements
 
 setup_requirements = ["pytest-runner"]
 
@@ -38,6 +41,7 @@ setup(
     install_requires=requirements,
     license="MIT license",
     long_description=readme + "\n\n" + history,
+    long_description_content_type='text/markdown',
     include_package_data=True,
     keywords="jpxlab",
     name="jpxlab",
