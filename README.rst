@@ -6,16 +6,16 @@ jpxlab
 .. image:: https://img.shields.io/pypi/v/jpxlab.svg
         :target: https://pypi.python.org/pypi/jpxlab
 
-.. image:: https://img.shields.io/travis/exilis/jpxlab.svg
-        :target: https://travis-ci.org/exilis/jpxlab
+.. image:: https://img.shields.io/travis/AlpacaDB/jpxlab.svg
+        :target: https://travis-ci.org/AlpacaDB/jpxlab
 
 .. image:: https://readthedocs.org/projects/jpxlab/badge/?version=latest
         :target: https://jpxlab.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
 
-.. image:: https://pyup.io/repos/github/exilis/jpxlab/shield.svg
-     :target: https://pyup.io/repos/github/exilis/jpxlab/
+.. image:: https://pyup.io/repos/github/AlpacaDB/jpxlab/shield.svg
+     :target: https://pyup.io/repos/github/AlpacaDB/jpxlab/
      :alt: Updates
 
 
